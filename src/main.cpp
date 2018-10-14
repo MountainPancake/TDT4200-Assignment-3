@@ -169,14 +169,15 @@ void threadedComputeBlock(std::vector<std::vector<int>> &dwellBuffer,
 			partY = yMax - omitBorder - curY;
 		}
 		thread = std::thread(
-		[curY,partY,atX,xMax,&dwellBuffer,omitBorder,cmin,dc]()
-		{
-			for (unsigned int y = curY; y < curY+partY; y++) {
-				for (unsigned int x = atX + omitBorder; x < xMax - omitBorder; x++) {
-					dwellBuffer.at(y).at(x) = pixelDwell(cmin, dc, y, x);
+			[curY,partY,atX,xMax,&dwellBuffer,omitBorder,cmin,dc]()
+			{
+				for (unsigned int y = curY; y < curY+partY; y++) {
+					for (unsigned int x = atX + omitBorder; x < xMax - omitBorder; x++) {
+						dwellBuffer.at(y).at(x) = pixelDwell(cmin, dc, y, x);
+					}
 				}
 			}
-		});
+		);
 		curY += partY;
 	}
 	for(auto& thread: threads){
