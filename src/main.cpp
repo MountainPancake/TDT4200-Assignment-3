@@ -102,6 +102,52 @@ unsigned int pixelDwell(std::complex<double> const &cmin,
 	return dwell;
 }
 
+int threadedCommonBorder(std::vector<std::vector<int>> &dwellBuffer,
+				 std::complex<double> const &cmin,
+				 std::complex<double> const &dc,
+				 unsigned int const atY,
+				 unsigned int const atX,
+				 unsigned int const blockSize)
+{
+	unsigned int const yMax = (res > atY + blockSize - 1) ? atY + blockSize - 1 : res - 1;
+	unsigned int const xMax = (res > atX + blockSize - 1) ? atX + blockSize - 1 : res - 1;
+	const int initalCommonDwell = pixelDwell(cmin, dc, atY, atX);
+	std::atomic<int> commonDwell(initalCommonDwell);
+	std::vector<std::thread> threads(4);
+	unsigned int s = 0;
+	for (auto& thread: threads) {
+		thread = std::thread(
+			[s, &commonDwell,yMax, xMax, &dwellBuffer, &cmin, &dc, atY, atX, blockSize]()
+			{
+				int localCommonDwell = -1;
+				for (unsigned int i = 0; i < blockSize; i++) {
+					unsigned const int y = s % 2 == 0 ? atY + i : (s == 1 ? yMax : atY);
+					unsigned const int x = s % 2 != 0 ? atX + i : (s == 0 ? xMax : atX);
+					if (y < res && x < res) {
+						if (dwellBuffer.at(y).at(x) < 0) {
+							dwellBuffer.at(y).at(x) = pixelDwell(cmin, dc, y, x);
+						}
+						if (localCommonDwell == -1) {
+							localCommonDwell = dwellBuffer.at(y).at(x);
+						} else if (localCommonDwell != dwellBuffer.at(y).at(x)) {
+							localCommonDwell = -1;
+							break;
+						}
+					}
+				}
+				if(localCommonDwell == -1 || localCommonDwell != commonDwell.load()){
+					commonDwell.store(-1);
+				}
+			}
+		);
+		s++;
+	}
+	for(auto& thread: threads){
+		thread.join();
+	}
+	return commonDwell;
+}
+
 int commonBorder(std::vector<std::vector<int>> &dwellBuffer,
 				 std::complex<double> const &cmin,
 				 std::complex<double> const &dc,
