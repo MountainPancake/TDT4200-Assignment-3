@@ -13,6 +13,8 @@
 #include <mutex>
 #include <atomic>
 #include <condition_variable>
+#include <thread>
+#include <cmath>
 
 static std::vector<std::pair<double,rgb>> colourGradient = {
 	{ 0.0		, { 0  , 0  , 0   } },
@@ -157,12 +159,28 @@ void threadedComputeBlock(std::vector<std::vector<int>> &dwellBuffer,
 	unsigned int const blockSize,
 	unsigned int const omitBorder = 0)
 {
+	std::vector<std::thread> threads(std::thread::hardware_concurrency());
 	unsigned int const yMax = (res > atY + blockSize) ? atY + blockSize : res;
 	unsigned int const xMax = (res > atX + blockSize) ? atX + blockSize : res;
-	for (unsigned int y = atY + omitBorder; y < yMax - omitBorder; y++) {
-		for (unsigned int x = atX + omitBorder; x < xMax - omitBorder; x++) {
-			dwellBuffer.at(y).at(x) = pixelDwell(cmin, dc, y, x);
+	unsigned int partY = std::ceil((yMax-atY)/(double)threads.size());
+	unsigned int curY = atY + omitBorder;
+	for(auto& thread: threads){
+		if(&thread == &threads.back()){
+			partY = yMax - omitBorder - curY;
 		}
+		thread = std::thread(
+		[curY,partY,atX,xMax,&dwellBuffer,omitBorder,cmin,dc]()
+		{
+			for (unsigned int y = curY; y < curY+partY; y++) {
+				for (unsigned int x = atX + omitBorder; x < xMax - omitBorder; x++) {
+					dwellBuffer.at(y).at(x) = pixelDwell(cmin, dc, y, x);
+				}
+			}
+		});
+		curY += partY;
+	}
+	for(auto& thread: threads){
+		thread.join();
 	}
 }
 
@@ -363,7 +381,7 @@ int main( int argc, char *argv[] )
 		marianiSilver(dwellBuffer, cmin, dc, 0, 0, correctedBlockSize);
 	} else {
 		// Traditional Mandelbrot-Set computation or the 'Escape Time' algorithm
-		computeBlock(dwellBuffer, cmin, dc, 0, 0, res, 0);
+		threadedComputeBlock(dwellBuffer, cmin, dc, 0, 0, res, 0);
 		if (mark)
 			markBorder(dwellBuffer, dwellCompute, 0, 0, res);
 	}
@@ -397,4 +415,3 @@ int main( int argc, char *argv[] )
 
 	return 0;
 }
-
