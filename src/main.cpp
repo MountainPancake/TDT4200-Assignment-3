@@ -145,7 +145,7 @@ int threadedCommonBorder(std::vector<std::vector<int>> &dwellBuffer,
 	for(auto& thread: threads){
 		thread.join();
 	}
-	return commonDwell;
+	return commonDwell.load();
 }
 
 int commonBorder(std::vector<std::vector<int>> &dwellBuffer,
@@ -292,24 +292,30 @@ void marianiSilver( std::vector<std::vector<int>> &dwellBuffer,
 					unsigned int const atX,
 					unsigned int const blockSize)
 {
-	int dwell = commonBorder(dwellBuffer, cmin, dc, atY, atX, blockSize);
-	if ( dwell >= 0 ) {
-		fillBlock(dwellBuffer, dwell, atY, atX, blockSize);
-		if (mark)
-			markBorder(dwellBuffer, dwellFill, atY, atX, blockSize);
-	} else if (blockSize <= blockDim) {
-		computeBlock(dwellBuffer, cmin, dc, atY, atX, blockSize);
-		if (mark)
-			markBorder(dwellBuffer, dwellCompute, atY, atX, blockSize);
-	} else {
-		// Subdivision
-		unsigned int newBlockSize = blockSize / subDiv;
-		for (unsigned int ydiv = 0; ydiv < subDiv; ydiv++) {
-			for (unsigned int xdiv = 0; xdiv < subDiv; xdiv++) {
-				marianiSilver(dwellBuffer, cmin, dc, atY + (ydiv * newBlockSize), atX + (xdiv * newBlockSize), newBlockSize);
+	std::thread t = std::thread(
+		[&](){
+			int dwell = commonBorder(dwellBuffer, cmin, dc, atY, atX, blockSize);
+			if ( dwell >= 0 ) {
+				fillBlock(dwellBuffer, dwell, atY, atX, blockSize);
+				if (mark)
+					markBorder(dwellBuffer, dwellFill, atY, atX, blockSize);
+			} else if (blockSize <= blockDim) {
+				computeBlock(dwellBuffer, cmin, dc, atY, atX, blockSize);
+				if (mark)
+					markBorder(dwellBuffer, dwellCompute, atY, atX, blockSize);
+			} else {
+				// Subdivision
+				unsigned int newBlockSize = blockSize / subDiv;
+				std::vector<std::thread> threads(subDiv*subDiv);
+				for (unsigned int ydiv = 0; ydiv < subDiv; ydiv++) {
+					for (unsigned int xdiv = 0; xdiv < subDiv; xdiv++) {
+						marianiSilver(dwellBuffer, cmin, dc, atY + (ydiv * newBlockSize), atX + (xdiv * newBlockSize), newBlockSize);
+					}
+				}
 			}
 		}
-	}
+	);
+	t.join();
 }
 
 void help() {
