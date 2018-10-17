@@ -2,3 +2,8 @@
 mandel/*
 output/*
 build/*
+.vscode/settings.json
+task1/output/mandel.png
+task1/output/mandelnav.png
+task2/output/mandel.png
+task2/output/mandelnav.png
