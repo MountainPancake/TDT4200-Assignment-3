@@ -39,6 +39,16 @@ static constexpr const rgba borderFill(255,255,255,255);
 static constexpr const rgba borderCompute(255,0,0,255);
 static std::vector<rgba> colours;
 
+struct job; 
+void worker();
+//! Our Global variables
+std::deque<job> JOB_QUEUE; 
+std::mutex JOB_LOCK;
+std::atomic<int> runningThreads; 
+// static int runningThreads; 
+std::condition_variable CV; 
+
+
 void createColourMap(unsigned int const maxDwell) {
 	rgb colour(0,0,0);
 	double pos = 0.0;
@@ -270,20 +280,52 @@ void fillBlock(std::vector<std::vector<int>> &dwellBuffer,
 // define job data type here
 
 typedef struct job {
-   std::vector<std::vector<int>> &dwellBuffer;
-   std::complex<double> const &cmin;
-   std::complex<double> const &dc;
-   unsigned int const atY;
-   unsigned int const atX;
-   unsigned int const blockSize;
+   	std::vector<std::vector<int>> &dwellBuffer;
+   	std::complex<double> const &cmin;
+   	std::complex<double> const &dc;
+   	unsigned int const atY;
+   	unsigned int const atX;
+   	unsigned int const blockSize;
 } job;
 
-// define mutex, condition variable and deque here
+job dummyJob(){
+	std::vector<std::vector<int>> dwellBuffer;
+	std::complex<double> const cmin=0;
+	std::complex<double> const dc=0;
+	unsigned int const atY=0;
+	unsigned int const atX=0;
+	unsigned int const blockSize=0;
 
-void addWork(/* parameters */)
+	job dummy{dwellBuffer, cmin, dc, atY, atX, blockSize};
+	return dummy; 
+}
+
+bool valid(job &j){
+	return j.blockSize >0; 
+}
+
+
+
+
+
+void addWork(std::vector<std::vector<int>> &dwellBuffer,
+					std::complex<double> const &cmin,
+					std::complex<double> const &dc,
+					unsigned int const atY,
+					unsigned int const atX,
+					unsigned int const blockSize)
 {
+	job temp{dwellBuffer, cmin, dc, atY, atX, blockSize};
+	JOB_LOCK.lock(); 
+	JOB_QUEUE.emplace_back(temp); 
+	CV.notify_one();
+	JOB_LOCK.unlock(); 
 
 }
+
+
+
+
 
 void marianiSilver( std::vector<std::vector<int>> &dwellBuffer,
 					std::complex<double> const &cmin,
@@ -291,32 +333,66 @@ void marianiSilver( std::vector<std::vector<int>> &dwellBuffer,
 					unsigned int const atY,
 					unsigned int const atX,
 					unsigned int const blockSize)
-{
-	std::thread t = std::thread(
-		[&](){
-			int dwell = commonBorder(dwellBuffer, cmin, dc, atY, atX, blockSize);
-			if ( dwell >= 0 ) {
-				fillBlock(dwellBuffer, dwell, atY, atX, blockSize);
-				if (mark)
-					markBorder(dwellBuffer, dwellFill, atY, atX, blockSize);
-			} else if (blockSize <= blockDim) {
-				computeBlock(dwellBuffer, cmin, dc, atY, atX, blockSize);
-				if (mark)
-					markBorder(dwellBuffer, dwellCompute, atY, atX, blockSize);
-			} else {
-				// Subdivision
-				unsigned int newBlockSize = blockSize / subDiv;
-				std::vector<std::thread> threads(subDiv*subDiv);
-				for (unsigned int ydiv = 0; ydiv < subDiv; ydiv++) {
-					for (unsigned int xdiv = 0; xdiv < subDiv; xdiv++) {
-						marianiSilver(dwellBuffer, cmin, dc, atY + (ydiv * newBlockSize), atX + (xdiv * newBlockSize), newBlockSize);
-					}
-				}
+{	
+	int optimalThreadCount = std::thread::hardware_concurrency(); 
+	runningThreads = optimalThreadCount; 
+	std::cout<<"optimalThreadCount "<<optimalThreadCount<<"\n"; 
+	JOB_QUEUE = std::deque<job>(); // Ensure queue is empty
+
+	addWork(dwellBuffer,
+			cmin,
+			dc,
+			atY,
+			atX,
+			blockSize);
+
+	std::vector<std::thread> workers(optimalThreadCount); 
+
+	for(auto& thread: workers){
+		thread = std::thread(worker);
+	}
+	
+	for(auto& thread: workers){
+		thread.join();
+	}
+
+}
+
+void marianiSilverDoWork(job j)
+{	
+	std::vector<std::vector<int>> &dwellBuffer = j.dwellBuffer;
+	std::complex<double> const &cmin  = j.cmin; 
+	std::complex<double> const &dc    = j.dc; 
+	unsigned int const atY            = j.atY; 
+	unsigned int const atX            = j.atX; 
+	unsigned int const blockSize      = j.blockSize; 
+
+	int dwell = commonBorder(dwellBuffer, cmin, dc, atY, atX, blockSize);
+	if ( dwell >= 0 ) {
+		fillBlock(dwellBuffer, dwell, atY, atX, blockSize);
+		if (mark)
+			markBorder(dwellBuffer, dwellFill, atY, atX, blockSize);
+	} else if (blockSize <= blockDim) {
+		computeBlock(dwellBuffer, cmin, dc, atY, atX, blockSize);
+		if (mark)
+			markBorder(dwellBuffer, dwellCompute, atY, atX, blockSize);
+	} else {
+		// Subdivision
+		unsigned int newBlockSize = blockSize / subDiv;
+		std::vector<std::thread> threads(subDiv*subDiv);
+		for (unsigned int ydiv = 0; ydiv < subDiv; ydiv++) {
+			for (unsigned int xdiv = 0; xdiv < subDiv; xdiv++) {
+				//! Swaped recursive call for an add work
+				addWork(dwellBuffer, cmin, dc, atY + (ydiv * newBlockSize), atX + (xdiv * newBlockSize), newBlockSize);
+				//? marianiSilver(dwellBuffer, cmin, dc, atY + (ydiv * newBlockSize), atX + (xdiv * newBlockSize), newBlockSize);
 			}
 		}
-	);
-	t.join();
+	}
 }
+
+
+
+//! 
 
 void help() {
 	std::cout << "Mandelbrot Set Renderer" << std::endl;
@@ -334,7 +410,23 @@ void help() {
 }
 
 void worker(void) {
-	// Currently I'm doing nothing
+	while(true){
+		std::unique_lock<std::mutex> lck(JOB_LOCK);
+		while(JOB_QUEUE.empty()){
+			--runningThreads; 
+			if(runningThreads==0){
+				CV.notify_all(); 
+				return; 
+			}
+			CV.wait(lck); 
+			++runningThreads; 
+		}
+		job currentWork = JOB_QUEUE.front(); 
+		JOB_QUEUE.pop_front(); 
+		lck.unlock();
+		marianiSilverDoWork(currentWork);
+		// std::cout<<"DID WORK\n"; 
+	}
 }
 
 int main( int argc, char *argv[] )
