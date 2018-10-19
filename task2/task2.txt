@@ -24,3 +24,5 @@ Since the thread-count is locked toghether with the queue, there is no reson to 
     It would also have been possible to have both the queue and the thread-count be atomic, and only have the condition variable be a mutex, 
 
 
+
+Finlly, we are able to compare the processing-times between the paralelized and the unparalelized algorithm.
