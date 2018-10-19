@@ -115,9 +115,9 @@ int threadedCommonBorder(std::vector<std::vector<int>> &dwellBuffer,
 	std::atomic<int> commonDwell(initalCommonDwell);
 	std::vector<std::thread> threads(4);
 	unsigned int s = 0;
-	for (auto& thread: threads) {
-		thread = std::thread(
-			[s, &commonDwell,yMax, xMax, &dwellBuffer, &cmin, &dc, atY, atX, blockSize]()
+	// for (auto& thread: threads) {
+	// 	thread = std::thread(
+	// 		[s, &commonDwell,yMax, xMax, &dwellBuffer, &cmin, &dc, atY, atX, blockSize]()
 			{
 				int localCommonDwell = -1;
 				for (unsigned int i = 0; i < blockSize; i++) {
@@ -139,7 +139,7 @@ int threadedCommonBorder(std::vector<std::vector<int>> &dwellBuffer,
 					commonDwell.store(-1);
 				}
 			}
-		);
+		//);
 		s++;
 	}
 	for(auto& thread: threads){
