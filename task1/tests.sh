@@ -12,13 +12,13 @@
 echo "Task 2 b"> results.txt
 for type in "" "-t"
 do
-    for iterations in 256 512 1024 2048
+    for iterations in 256 1024
     do 
-        for block_dim in 1 2 3 4 8 16
+        for block_dim in  1 4 16
             do 
-                for pixel in 256 512 1024 2048
+                for pixel in 512 2048
                 do
-                    echo "Iteration, blockDim, Pixel" ${iterations} ${block_dim} ${pixel} "Type: ${type}" >>results.txt
+                    echo "Iteration: ${iterations} blockDim:  ${block_dim} Pixel:"  ${pixel} "Type: ${type}." >>results.txt
                     { time mandel/mandel 1 2> mandel/mandel.stderr ; } 2>> results.txt
                     # {time ./mandel/mandel -i ${iterations} -b ${block_dim} -r ${pixel} 1 ;} 2>> results.txt
                 done
