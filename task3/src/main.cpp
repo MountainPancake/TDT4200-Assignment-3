@@ -110,6 +110,7 @@ int commonBorder(std::vector<std::vector<int>> &dwellBuffer,
 	unsigned int const yMax = (res > atY + blockSize - 1) ? atY + blockSize - 1 : res - 1;
 	unsigned int const xMax = (res > atX + blockSize - 1) ? atX + blockSize - 1 : res - 1;
 	int commonDwell = -1;
+	// Can not be paralelized because of the return-statement
 	for (unsigned int i = 0; i < blockSize; i++) {
 		for (unsigned int s = 0; s < 4; s++) {
 			unsigned const int y = s % 2 == 0 ? atY + i : (s == 1 ? yMax : atY);
@@ -137,6 +138,7 @@ void markBorder(std::vector<std::vector<int>> &dwellBuffer,
 {
 	unsigned int const yMax = (res > atY + blockSize - 1) ? atY + blockSize - 1 : res - 1;
 	unsigned int const xMax = (res > atX + blockSize - 1) ? atX + blockSize - 1 : res - 1;
+	// #pragma omp parallel // Does not change enything
 	for (unsigned int i = 0; i < blockSize; i++) {
 		for (unsigned int s = 0; s < 4; s++) {
 			unsigned const int y = s % 2 == 0 ? atY + i : (s == 1 ? yMax : atY);
@@ -159,6 +161,7 @@ void threadedComputeBlock(std::vector<std::vector<int>> &dwellBuffer,
 {
 	unsigned int const yMax = (res > atY + blockSize) ? atY + blockSize : res;
 	unsigned int const xMax = (res > atX + blockSize) ? atX + blockSize : res;
+	#pragma omp parallel // Not very notiveable speedup
 	for (unsigned int y = atY + omitBorder; y < yMax - omitBorder; y++) {
 		for (unsigned int x = atX + omitBorder; x < xMax - omitBorder; x++) {
 			dwellBuffer.at(y).at(x) = pixelDwell(cmin, dc, y, x);
@@ -176,6 +179,7 @@ void computeBlock(std::vector<std::vector<int>> &dwellBuffer,
 {
 	unsigned int const yMax = (res > atY + blockSize) ? atY + blockSize : res;
 	unsigned int const xMax = (res > atX + blockSize) ? atX + blockSize : res;
+	// #pragma omp parallel	 lows down the program
 	for (unsigned int y = atY + omitBorder; y < yMax - omitBorder; y++) {
 		for (unsigned int x = atX + omitBorder; x < xMax - omitBorder; x++) {
 			dwellBuffer.at(y).at(x) = pixelDwell(cmin, dc, y, x);
@@ -192,6 +196,7 @@ void fillBlock(std::vector<std::vector<int>> &dwellBuffer,
 {
 	unsigned int const yMax = (res > atY + blockSize) ? atY + blockSize : res;
 	unsigned int const xMax = (res > atX + blockSize) ? atX + blockSize : res;
+	// #pragma omp parallel	 // Slows down the program noticeably
 	for (unsigned int y = atY + omitBorder; y < yMax - omitBorder; y++) {
 		for (unsigned int x = atX + omitBorder; x < xMax - omitBorder; x++) {
 			if (dwellBuffer.at(y).at(x) < 0) {
@@ -239,11 +244,15 @@ void marianiSilver( std::vector<std::vector<int>> &dwellBuffer,
 	} else {
 		// Subdivision
 		unsigned int newBlockSize = blockSize / subDiv;
+		// #pragma omp parallel
+		{
+		// #pragma omp for schedule(dynamic,1)
 		for (unsigned int ydiv = 0; ydiv < subDiv; ydiv++) {
 			for (unsigned int xdiv = 0; xdiv < subDiv; xdiv++) {
 				marianiSilver(dwellBuffer, cmin, dc, atY + (ydiv * newBlockSize), atX + (xdiv * newBlockSize), newBlockSize);
 			}
 		}
+	}
 	}
 }
 
